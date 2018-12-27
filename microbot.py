@@ -142,7 +142,7 @@ class MicroBotPush:
         c = s.getCharacteristics(MicroBotPush.UUID.CHR2A90)[0]
         self.p.writeCharacteristic(c.getHandle()+1, b'\x01\x00')
         rstr = " "+self.__randomstr(32)+"\x00"*7
-        c.write(binascii.a2b_hex(binascii.b2a_hex(rstr.encode())))
+        c.write(rstr.encode())
 
         print('touch the button to get a token')
 
