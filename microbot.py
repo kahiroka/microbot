@@ -9,6 +9,7 @@ import configparser
 from configparser import NoSectionError
 from argparse import ArgumentParser
 from os.path import expanduser
+import os
 
 class MicroBotPush:
     class UUID():
@@ -103,7 +104,8 @@ class MicroBotPush:
             config.add_section('tokens')
         bdaddr = self.bdaddr.lower().replace(':', '')
         config.set('tokens', bdaddr, self.token)
-        with open(self.config, 'w') as file:
+        os.umask(0)
+        with open(os.open(self.config, os.O_CREAT | os.O_WRONLY, 0o600), 'w') as file:
             config.write(file)
 
     def hasToken(self):
