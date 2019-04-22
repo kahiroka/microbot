@@ -14,8 +14,9 @@ Find your device's bdaddr by using hcitool.
     XX:XX:XX:XX:XX:XX mibp
 
 You need to get a token from the device first time.
+(Please add '-n' option in case of 1.x.x.x firmware.)
 
-    $ python3 ./microbot.py XX:XX:XX:XX:XX:XX
+    $ python3 ./microbot.py [-n] XX:XX:XX:XX:XX:XX
     update token
     connected
     notify: ack with bdaddr
@@ -30,7 +31,7 @@ Touch the button on the device to continue the process.
 The token is stored in ~/.microbot.conf by default.
 Now you can use the device by using the token.
 
-    $ python3 ./microbot.py XX:XX:XX:XX:XX:XX
+    $ python3 ./microbot.py [-n] XX:XX:XX:XX:XX:XX
     use existing token
     connected
     disconnected
