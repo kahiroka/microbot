@@ -35,3 +35,9 @@ Now you can use the device by using the token.
     use existing token
     connected
     disconnected
+
+If you need to set mode, depth or press&hole duration in case of 1.x.x.x firmware, please use -s option to set them in advance.
+
+    $ python3 ./microbot.py -n -s -m normal -d 25 -p 5 XX:XX:XX:XX:XX:XX
+    and then,
+    $ python3 ./microbot.py -n XX:XX:XX:XX:XX:XX

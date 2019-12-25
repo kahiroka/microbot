@@ -73,6 +73,8 @@ class MicroBotPush:
         self.__loadToken()
         self.newproto = newproto
         self.depth = 50
+        self.duration = 0
+        self.mode = 0
 
     def connect(self, init=False):
         retry = self.retry
@@ -209,7 +211,24 @@ class MicroBotPush:
             c = s.getCharacteristics(MicroBotPush.UUID.CHR2A35)[0]
             c.write(binascii.a2b_hex('{:02x}'.format(depth)))
 
-    def push(self, period=1):
+    def setDuration(self, duration):
+        if self.p == None:
+            return
+        if self.newproto:
+            self.duration = duration
+
+    def setMode(self, mode):
+        if self.p == None:
+            return
+        if self.newproto:
+            if 'normal' == mode:
+                self.mode = 0
+            elif 'invert' == mode:
+                self.mode = 1
+            elif 'toggle' == mode:
+                self.mode = 2
+
+    def push(self, setparams):
         if self.p == None:
             return
         retry = self.retry
@@ -219,9 +238,18 @@ class MicroBotPush:
                     s = self.p.getServiceByUUID(MicroBotPush.UUID.SVC1831)
                     c = s.getCharacteristics(MicroBotPush.UUID.CHR2A89)[0]
                     id = self.__randomid(16)
-                    c.write(binascii.a2b_hex(id+"000100000008040000000a0000000000decd"))
-                    c.write(binascii.a2b_hex(id+"0fff"+'{:02x}'.format(self.depth)+"000000"+"000000000000000000000000"))
-                    break
+                    if setparams:
+                        c.write(binascii.a2b_hex(id+"000100000008030001000a0000000000decd"))
+                        c.write(binascii.a2b_hex(id+"0fff"+'{:02x}'.format(self.mode)+"000000"+"000000000000000000000000"))
+                        c.write(binascii.a2b_hex(id+"000100000008040001000a0000000000decd"))
+                        c.write(binascii.a2b_hex(id+"0fff"+'{:02x}'.format(self.depth)+"000000"+"000000000000000000000000"))
+                        c.write(binascii.a2b_hex(id+"000100000008050001000a0000000000decd"))
+                        c.write(binascii.a2b_hex(id+"0fff"+self.duration.to_bytes(4,"little").hex()+"000000000000000000000000"))
+                        break
+                    else:
+                        c.write(binascii.a2b_hex(id+"000100000008020000000a0000000000decd"))
+                        c.write(binascii.a2b_hex(id+"0fffffffffff000000000000000000000000"))
+                        break
                 else:
                     s = self.p.getServiceByUUID(MicroBotPush.UUID.SVC1821)
                     c = s.getCharacteristics(MicroBotPush.UUID.CHR2A11)[0]
@@ -248,10 +276,13 @@ def getArgs():
     argparser = ArgumentParser(usage=usage)
     argparser.add_argument('bdaddr', type=str, help='bd address')
     argparser.add_argument('-u', '--update', action='store_true', dest='update', help='forcibly update token')
-    argparser.add_argument('-d', '--depth', nargs='?', default=50, type=int, dest='depth', help='depth (0-100)')
+    argparser.add_argument('-d', '--depth', nargs='?', default=50, type=int, dest='depth', help='depth (0-100) (ignored, use with -s option if fwver>=1.0.0.0)')
     argparser.add_argument('-c', '--config', nargs='?', default='~/.microbot.conf', type=str, dest='config', help='config (~/.microbot.conf)')
     argparser.add_argument('-v', '--verbose', action='store_true', dest='verbose', help='verbose')
     argparser.add_argument('-n', '--newproto', action='store_true', dest='newproto', help='use new protocol (fwver>=1.0.0.0)')
+    argparser.add_argument('-p', '--presshold', nargs='?', default=0, type=int, dest='duration', help='press and hold duration in seconds. use with -s option (fwver>=1.0.0.0)')
+    argparser.add_argument('-m', '--mode', nargs='?', default='normal', type=str, dest='mode', help='normal|invert|toggle. use with -s option (fwver>=1.0.0.0)')
+    argparser.add_argument('-s', '--setparams', action='store_true', dest='setparams', help='set mode, depth and press&hold duration in advance (fwver>=1.0.0.0)')
     return argparser.parse_args()
 
 def main():
@@ -261,7 +292,9 @@ def main():
         print('use existing token')
         mbp.connect()
         mbp.setDepth(args.depth)
-        mbp.push()
+        mbp.setDuration(args.duration)
+        mbp.setMode(args.mode)
+        mbp.push(args.setparams)
         mbp.disconnect()
     else:
         print('update token')
