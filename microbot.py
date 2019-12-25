@@ -244,7 +244,7 @@ class MicroBotPush:
     # end of class
 
 def getArgs():
-    usage = 'usage: python3 {} [-u] [-d #] xx:xx:xx:xx:xx:xx'.format(__file__)
+    usage = 'python3 {} [-u] [-d #] xx:xx:xx:xx:xx:xx'.format(__file__)
     argparser = ArgumentParser(usage=usage)
     argparser.add_argument('bdaddr', type=str, help='bd address')
     argparser.add_argument('-u', '--update', action='store_true', dest='update', help='forcibly update token')
