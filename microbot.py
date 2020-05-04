@@ -50,7 +50,7 @@ class MicroBotPush:
                     bdaddr = tmp[6:6+12]
                     self.bdaddr = bdaddr.decode()
                 elif b'1fff' == tmp[0:4] and b'0000000000000000000000' != tmp[6:6+22] and b'00000000' == tmp[28:36]:
-                    token = binascii.b2a_hex(tmp)[4:4+32]
+                    token = tmp[4:4+32]
                     self.token = token.decode()
                     print("notify: ack with token")
             else:
