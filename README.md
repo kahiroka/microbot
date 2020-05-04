@@ -41,3 +41,11 @@ If you need to set mode, depth or press&hole duration in case of 1.x.x.x firmwar
     $ python3 ./microbot.py -n -s -m normal -d 25 -p 5 XX:XX:XX:XX:XX:XX
     and then,
     $ python3 ./microbot.py -n XX:XX:XX:XX:XX:XX
+
+Simple server mode is added. This mode uses unix domain socket and its file path is /var/tmp/microbot-xxxxxxxxxxxx.
+
+    On server side:
+    $ python3 ./microbot.py -r -n XX:XX:XX:XX:XX:XX
+
+    On client side:
+    $ python3 ./microbot.py -n XX:XX:XX:XX:XX:XX

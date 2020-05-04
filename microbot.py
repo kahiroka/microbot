@@ -10,6 +10,9 @@ from configparser import NoSectionError
 from argparse import ArgumentParser
 from os.path import expanduser
 import os
+import socket
+import json
+import re
 
 class MicroBotPush:
     class UUID():
@@ -63,7 +66,7 @@ class MicroBotPush:
             return self.bdaddr
     # end of class
 
-    def __init__(self, bdaddr, config, newproto):
+    def __init__(self, bdaddr, config, newproto, is_server):
         self.bdaddr = bdaddr
         self.retry = 5
         self.token = None
@@ -75,8 +78,16 @@ class MicroBotPush:
         self.depth = 50
         self.duration = 0
         self.mode = 0
+        self.is_server = is_server
+        self.socket = None
+        self.socket_path = "/var/tmp/microbot-"+re.sub('[^a-f0-9]', '', bdaddr.lower())
 
     def connect(self, init=False):
+        if self.is_server == False:
+            self.socket = self.__connectToServer()
+            if self.socket:
+                return
+
         retry = self.retry
         while True:
             try:
@@ -94,7 +105,49 @@ class MicroBotPush:
                 retry = retry - 1 
                 sleep(1)
 
+    def __connectToServer(self):
+        self.socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        try:
+            self.socket.connect(self.socket_path)
+            print("connected to server")
+            return self.socket
+        except ConnectionRefusedError:
+            return None
+        except FileNotFoundError:
+            return None
+
+    def runServer(self):
+        if self.is_server == False:
+            return
+
+        print("server mode")
+        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        try:
+            os.remove(self.socket_path)
+        except FileNotFoundError:
+            pass
+
+        s.bind(self.socket_path)
+        s.listen(1)
+        try:
+            while True:
+                connection, address = s.accept()
+                msg = connection.recv(1024)
+                param = json.loads(msg.decode('UTF-8'))
+                print(param)
+                self.depth = param['depth']
+                self.duration = param['duration']
+                self.mode = param['mode']
+                self.push(param['setparams'])
+        finally:
+            os.remove(self.socket_path)
+
     def disconnect(self):
+        if self.is_server == False:
+            if self.socket:
+                self.socket.close()
+                return
+
         if self.p == None:
             return
         try:
@@ -202,24 +255,21 @@ class MicroBotPush:
         self.__storeToken()
 
     def setDepth(self, depth):
-        if self.p == None:
-            return
         if self.newproto:
             self.depth = depth
         else:
-            s = self.p.getServiceByUUID(MicroBotPush.UUID.SVC1821)
-            c = s.getCharacteristics(MicroBotPush.UUID.CHR2A35)[0]
-            c.write(binascii.a2b_hex('{:02x}'.format(depth)))
+            if self.p == None:
+                return
+            else:
+                s = self.p.getServiceByUUID(MicroBotPush.UUID.SVC1821)
+                c = s.getCharacteristics(MicroBotPush.UUID.CHR2A35)[0]
+                c.write(binascii.a2b_hex('{:02x}'.format(depth)))
 
     def setDuration(self, duration):
-        if self.p == None:
-            return
         if self.newproto:
             self.duration = duration
 
     def setMode(self, mode):
-        if self.p == None:
-            return
         if self.newproto:
             if 'normal' == mode:
                 self.mode = 0
@@ -228,7 +278,16 @@ class MicroBotPush:
             elif 'toggle' == mode:
                 self.mode = 2
 
+    def __push_server(self, setparams):
+        msg = json.dumps({"depth": self.depth, "duration": self.duration, "mode": self.mode, "newproto": self.newproto, "setparams": setparams}).encode('UTF-8')
+        self.socket.send(msg)
+
     def push(self, setparams):
+        if self.is_server == False:
+            if self.socket:
+                self.__push_server(setparams)
+                return
+
         if self.p == None:
             return
         retry = self.retry
@@ -283,18 +342,22 @@ def getArgs():
     argparser.add_argument('-p', '--presshold', nargs='?', default=0, type=int, dest='duration', help='press and hold duration in seconds. use with -s option (fwver>=1.0.0.0)')
     argparser.add_argument('-m', '--mode', nargs='?', default='normal', type=str, dest='mode', help='normal|invert|toggle. use with -s option (fwver>=1.0.0.0)')
     argparser.add_argument('-s', '--setparams', action='store_true', dest='setparams', help='set mode, depth and press&hold duration in advance (fwver>=1.0.0.0)')
+    argparser.add_argument('-r', '--server', action='store_true', dest='is_server', help='server mode (fwver>=1.0.0.0)')
     return argparser.parse_args()
 
 def main():
     args = getArgs()
-    mbp = MicroBotPush(args.bdaddr, args.config, args.newproto)
+    mbp = MicroBotPush(args.bdaddr, args.config, args.newproto, args.is_server)
     if mbp.hasToken() and not args.update:
         print('use existing token')
         mbp.connect()
         mbp.setDepth(args.depth)
         mbp.setDuration(args.duration)
         mbp.setMode(args.mode)
-        mbp.push(args.setparams)
+        if args.is_server:
+            mbp.runServer()
+        else:
+            mbp.push(args.setparams)
         mbp.disconnect()
     else:
         print('update token')
