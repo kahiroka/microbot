@@ -1,6 +1,7 @@
 import binascii
 from bluepy.btle import Peripheral
 from bluepy.btle import BTLEException
+from bluepy.btle import BTLEDisconnectError
 from bluepy.btle import DefaultDelegate
 import sys
 from time import sleep
@@ -100,7 +101,7 @@ class MicroBotPush:
                 break
             except BTLEException:
                 if retry == 0:
-                    print("failed")
+                    print("failed to connect")
                     break
                 retry = retry - 1 
                 sleep(1)
@@ -129,18 +130,31 @@ class MicroBotPush:
 
         s.bind(self.socket_path)
         s.listen(1)
-        try:
+        while True:
+            self.connect()
+
             while True:
-                connection, address = s.accept()
-                msg = connection.recv(1024)
-                param = json.loads(msg.decode('UTF-8'))
-                print(param)
-                self.depth = param['depth']
-                self.duration = param['duration']
-                self.mode = param['mode']
-                self.push(param['setparams'])
-        finally:
-            os.remove(self.socket_path)
+                try:
+                    connection, address = s.accept()
+                    msg = connection.recv(1024)
+                    param = json.loads(msg.decode('UTF-8'))
+                    print(param)
+                    self.depth = param['depth']
+                    self.duration = param['duration']
+                    self.mode = param['mode']
+                    res = self.push(param['setparams'])
+                    msg = json.dumps({"result": res}).encode('UTF-8')
+                    connection.send(msg)
+                    if res == False:
+                        break
+                except BrokenPipeError:
+                    print('broken pipe error')
+                except KeyboardInterrupt:
+                    os.remove(self.socket_path)
+                    self.disconnect()
+                    sys.exit('exit')
+
+            self.disconnect()
 
     def disconnect(self):
         if self.is_server == False:
@@ -155,7 +169,7 @@ class MicroBotPush:
             self.p = None
             print("disconnected")
         except BTLEException:
-            print("failed")
+            print("failed to disconnect")
 
     def __loadToken(self):
         config = configparser.ConfigParser()
@@ -182,18 +196,21 @@ class MicroBotPush:
             return True
 
     def __initToken(self):
-        if self.newproto:
-            s = self.p.getServiceByUUID(MicroBotPush.UUID.SVC1831)
-            c = s.getCharacteristics(MicroBotPush.UUID.CHR2A89)[0]
-            self.p.writeCharacteristic(c.getHandle()+1, b'\x01\x00')
-            id = self.__randomid(16)
-            c.write(binascii.a2b_hex(id+"00010040e20100fa01000700000000000000"))
-            c.write(binascii.a2b_hex(id+"0fffffffffffffffffffffffffff"+self.__randomid(32)))
-        else:
-            s = self.p.getServiceByUUID(MicroBotPush.UUID.SVC1831)
-            c = s.getCharacteristics(MicroBotPush.UUID.CHR2A98)[0]
-            self.p.writeCharacteristic(c.getHandle()+1, b'\x01\x00')
-            c.write(binascii.a2b_hex("00000167"+"00"*16))
+        try:
+            if self.newproto:
+                s = self.p.getServiceByUUID(MicroBotPush.UUID.SVC1831)
+                c = s.getCharacteristics(MicroBotPush.UUID.CHR2A89)[0]
+                self.p.writeCharacteristic(c.getHandle()+1, b'\x01\x00', True)
+                id = self.__randomid(16)
+                c.write(binascii.a2b_hex(id+"00010040e20100fa01000700000000000000"), True)
+                c.write(binascii.a2b_hex(id+"0fffffffffffffffffffffffffff"+self.__randomid(32)), True)
+            else:
+                s = self.p.getServiceByUUID(MicroBotPush.UUID.SVC1831)
+                c = s.getCharacteristics(MicroBotPush.UUID.CHR2A98)[0]
+                self.p.writeCharacteristic(c.getHandle()+1, b'\x01\x00')
+                c.write(binascii.a2b_hex("00000167"+"00"*16))
+        except BTLEException:
+            print("failed to init token")
 
         while True:
             bdaddr = self.handler.getBdaddr()
@@ -208,37 +225,43 @@ class MicroBotPush:
             self.__initToken()
         else:
             if self.hasToken():
-                if self.newproto:
-                    s = self.p.getServiceByUUID(MicroBotPush.UUID.SVC1831)
-                    c = s.getCharacteristics(MicroBotPush.UUID.CHR2A89)[0]
-                    self.p.writeCharacteristic(c.getHandle()+1, b'\x01\x00')
-                    s = self.p.getServiceByUUID(MicroBotPush.UUID.SVC1831)
-                    c = s.getCharacteristics(MicroBotPush.UUID.CHR2A89)[0]
-                    id = self.__randomid(16)
-                    c.write(binascii.a2b_hex(id+"00010000000000fa0000070000000000decd"))
-                    c.write(binascii.a2b_hex(id+"0fff"+self.token))
-                else:
-                    s = self.p.getServiceByUUID(MicroBotPush.UUID.SVC1831)
-                    c = s.getCharacteristics(MicroBotPush.UUID.CHR2A98)[0]
-                    c.write(binascii.a2b_hex("00000167"+self.token))
+                try:
+                    if self.newproto:
+                        s = self.p.getServiceByUUID(MicroBotPush.UUID.SVC1831)
+                        c = s.getCharacteristics(MicroBotPush.UUID.CHR2A89)[0]
+                        self.p.writeCharacteristic(c.getHandle()+1, b'\x01\x00', True)
+                        s = self.p.getServiceByUUID(MicroBotPush.UUID.SVC1831)
+                        c = s.getCharacteristics(MicroBotPush.UUID.CHR2A89)[0]
+                        id = self.__randomid(16)
+                        c.write(binascii.a2b_hex(id+"00010000000000fa0000070000000000decd"), True)
+                        c.write(binascii.a2b_hex(id+"0fff"+self.token), True)
+                    else:
+                        s = self.p.getServiceByUUID(MicroBotPush.UUID.SVC1831)
+                        c = s.getCharacteristics(MicroBotPush.UUID.CHR2A98)[0]
+                        c.write(binascii.a2b_hex("00000167"+self.token))
+                except BTLEException:
+                    print("failed to set token")
 
     def getToken(self):
         if self.p == None:
             return
-        if self.newproto:
-            s = self.p.getServiceByUUID(MicroBotPush.UUID.SVC1831)
-            c = s.getCharacteristics(MicroBotPush.UUID.CHR2A89)[0]
-            self.p.writeCharacteristic(c.getHandle()+1, b'\x01\x00')
-            rstr = " "+self.__randomstr(32)+"\x00"*7
-            id = self.__randomid(16)
-            c.write(binascii.a2b_hex(id+"00010040e20101fa01000000000000000000"))
-            c.write(binascii.a2b_hex(id+"0fffffffffffffffffff0000000000000000"))
-        else:
-            s = self.p.getServiceByUUID(MicroBotPush.UUID.SVC1831)
-            c = s.getCharacteristics(MicroBotPush.UUID.CHR2A90)[0]
-            self.p.writeCharacteristic(c.getHandle()+1, b'\x01\x00')
-            rstr = " "+self.__randomstr(32)+"\x00"*7
-            c.write(rstr.encode())
+        try:
+            if self.newproto:
+                s = self.p.getServiceByUUID(MicroBotPush.UUID.SVC1831)
+                c = s.getCharacteristics(MicroBotPush.UUID.CHR2A89)[0]
+                self.p.writeCharacteristic(c.getHandle()+1, b'\x01\x00', True)
+                rstr = " "+self.__randomstr(32)+"\x00"*7
+                id = self.__randomid(16)
+                c.write(binascii.a2b_hex(id+"00010040e20101fa01000000000000000000"), True)
+                c.write(binascii.a2b_hex(id+"0fffffffffffffffffff0000000000000000"), True)
+            else:
+                s = self.p.getServiceByUUID(MicroBotPush.UUID.SVC1831)
+                c = s.getCharacteristics(MicroBotPush.UUID.CHR2A90)[0]
+                self.p.writeCharacteristic(c.getHandle()+1, b'\x01\x00')
+                rstr = " "+self.__randomstr(32)+"\x00"*7
+                c.write(rstr.encode())
+        except BTLEException:
+            print("failed to request token")
 
         print('touch the button to get a token')
 
@@ -281,15 +304,18 @@ class MicroBotPush:
     def __push_server(self, setparams):
         msg = json.dumps({"depth": self.depth, "duration": self.duration, "mode": self.mode, "newproto": self.newproto, "setparams": setparams}).encode('UTF-8')
         self.socket.send(msg)
+        msg = self.socket.recv(1024)
+        param = json.loads(msg.decode('UTF-8'))
+        return param['result']
 
     def push(self, setparams):
         if self.is_server == False:
             if self.socket:
-                self.__push_server(setparams)
-                return
+                res = self.__push_server(setparams)
+                return res
 
         if self.p == None:
-            return
+            return False
         retry = self.retry
         while True:
             try:
@@ -298,28 +324,31 @@ class MicroBotPush:
                     c = s.getCharacteristics(MicroBotPush.UUID.CHR2A89)[0]
                     id = self.__randomid(16)
                     if setparams:
-                        c.write(binascii.a2b_hex(id+"000100000008030001000a0000000000decd"))
-                        c.write(binascii.a2b_hex(id+"0fff"+'{:02x}'.format(self.mode)+"000000"+"000000000000000000000000"))
-                        c.write(binascii.a2b_hex(id+"000100000008040001000a0000000000decd"))
-                        c.write(binascii.a2b_hex(id+"0fff"+'{:02x}'.format(self.depth)+"000000"+"000000000000000000000000"))
-                        c.write(binascii.a2b_hex(id+"000100000008050001000a0000000000decd"))
-                        c.write(binascii.a2b_hex(id+"0fff"+self.duration.to_bytes(4,"little").hex()+"000000000000000000000000"))
-                        break
+                        c.write(binascii.a2b_hex(id+"000100000008030001000a0000000000decd"), True)
+                        c.write(binascii.a2b_hex(id+"0fff"+'{:02x}'.format(self.mode)+"000000"+"000000000000000000000000"), True)
+                        c.write(binascii.a2b_hex(id+"000100000008040001000a0000000000decd"), True)
+                        c.write(binascii.a2b_hex(id+"0fff"+'{:02x}'.format(self.depth)+"000000"+"000000000000000000000000"), True)
+                        c.write(binascii.a2b_hex(id+"000100000008050001000a0000000000decd"), True)
+                        c.write(binascii.a2b_hex(id+"0fff"+self.duration.to_bytes(4,"little").hex()+"000000000000000000000000"), True)
+                        return True
                     else:
-                        c.write(binascii.a2b_hex(id+"000100000008020000000a0000000000decd"))
-                        c.write(binascii.a2b_hex(id+"0fffffffffff000000000000000000000000"))
-                        break
+                        c.write(binascii.a2b_hex(id+"000100000008020000000a0000000000decd"), True)
+                        c.write(binascii.a2b_hex(id+"0fffffffffff000000000000000000000000"), True)
+                        return True
                 else:
                     s = self.p.getServiceByUUID(MicroBotPush.UUID.SVC1821)
                     c = s.getCharacteristics(MicroBotPush.UUID.CHR2A11)[0]
                     c.write(b'\x01')
-                    break
+                    return True
             except BTLEDisconnectError:
                 if retry == 0:
-                    print("failed")
-                    break
+                    print("failed to push by disconnect error")
+                    return False
                 retry = retry - 1 
                 sleep(1)
+            except BTLEException:
+                print("failed to push by exception")
+                return False
 
     def __randomstr(self, n):
        randstr = [random.choice(string.printable) for i in range(n)]
@@ -350,15 +379,17 @@ def main():
     mbp = MicroBotPush(args.bdaddr, args.config, args.newproto, args.is_server)
     if mbp.hasToken() and not args.update:
         print('use existing token')
-        mbp.connect()
-        mbp.setDepth(args.depth)
-        mbp.setDuration(args.duration)
-        mbp.setMode(args.mode)
         if args.is_server:
             mbp.runServer()
         else:
-            mbp.push(args.setparams)
-        mbp.disconnect()
+            mbp.connect()
+            mbp.setDepth(args.depth)
+            mbp.setDuration(args.duration)
+            mbp.setMode(args.mode)
+            res = mbp.push(args.setparams)
+            mbp.disconnect()
+            if res == False:
+                sys.exit('failed to push')
     else:
         print('update token')
         mbp.connect(init=True)
