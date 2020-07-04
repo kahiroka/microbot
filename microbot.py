@@ -130,6 +130,7 @@ class MicroBotPush:
 
         s.bind(self.socket_path)
         s.listen(1)
+        os.chmod(self.socket_path, 0o777)
         while True:
             self.connect()
 
