@@ -12,11 +12,13 @@ Find your device's bdaddr by using hcitool.
 
     $ sudo hcitool lescan | grep mibp
     XX:XX:XX:XX:XX:XX mibp
+    
+First reset your MicroBot Push. Turn it off then turn it on. When the LED starts blinking red, touch immediately the capacitive button on top and hold for about 5 seconds until the LED starts blinking red rapidly. Initialization. Wait until the LED blinks blue. Once the LED blinks blue, the reset is completed and your MicroBot Push is ready to be paired again.
 
 You need to get a token from the device first time.
 (Please add '-n' option in case of 1.x.x.x firmware.)
 
-    $ python3 ./microbot.py [-n] XX:XX:XX:XX:XX:XX
+    $ python3 ./microbot.py -u [-n] XX:XX:XX:XX:XX:XX
     update token
     connected
     notify: ack with bdaddr
